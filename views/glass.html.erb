@@ -1,0 +1,12 @@
+<h1>Weather Alerts for <%= latitude %>, <%= longitude %></h1>
+
+<% if alerts %>
+  <% alerts.each do |alert| %>
+    <%= alert['title'] %><br>
+    <%= alert['expires'] %>
+    <hr>
+  <% end %>
+<% else %>
+  No alerts for your area
+<% end %>
+<%# binding.pry %>

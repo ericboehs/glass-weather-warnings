@@ -1,0 +1,71 @@
+#!/usr/bin/env bash
+trap "rm -f setup.lock; exit 1" INT TERM
+export TOP_PID=$$
+[[ -f setup.lock ]] && echo 'Setup alreaady running; exiting...' && exit
+touch setup.lock
+
+successfully() {
+  $* || (echo "----- failed" 1>&2 && kill -s TERM $TOP_PID)
+}
+
+append_log() {
+  $* >> log/setup.log
+}
+
+
+mkdir -p log
+append_log successfully touch log/setup.log
+append_log successfully echo "\n\n----- Starting script/setup"
+
+if [ ! -d .bundle ]; then
+  echo "Oh. Hello there. Haven't seen you before..."
+  echo "Tail the log/setup.log if you get bored."
+  echo
+fi
+
+if [ ! -f .env ]; then
+  echo "Creating .env file from example. Please edit it!"
+  successfully cp .env.example .env
+fi
+
+if [ ! -z "$WITH_DEP" ]; then
+  echo "Checking system dependencies..."
+  IS_MAC=false
+  [[ $(command -v sw_vers) && $(sw_vers -productVersion | cut -f2 -d.) -ge 7 ]] && IS_MAC=true
+  if $IS_MAC; then
+    append_log gem list -i brewdler || gem install brewdler --no-rdoc --no-ri
+    append_log successfully brewdle install
+  else
+    echo 'Your OS is not supported. Get an adult.'
+    exit 1
+  fi
+fi
+
+echo "Installing libraries..."
+append_log successfully gem list -i bundler || gem install bundler
+append_log successfully bundle install --path vendor/bundle --binstubs vendor/bundle/bin
+
+# if [ -z "$KEEPDB" ]; then
+  # echo "Reloading the database..."
+  # append_log successfully bundle exec rake db:migrate:reset db:fixtures:load db:test:prepare
+# fi
+
+ps ax | grep "memcache[d]" > /dev/null
+if [ $? -eq 0 ]; then
+  command -v nc > /dev/null
+  if [ $? -eq 0 ]; then
+    echo "Flushing Memcache..."
+    append_log successfully echo -e "flush_all\nquit\n" | nc 127.0.0.1 11211
+  else
+    echo "WARNING: Please install netcat for automatic flushing of memcache"
+  fi
+fi
+
+ps ax | grep "pow$" > /dev/null
+if [ $? -eq 0 ]; then
+  echo "Restarting Pow..."
+  touch tmp/restart.txt
+fi
+
+rm -f setup.lock
+echo "All done!"
